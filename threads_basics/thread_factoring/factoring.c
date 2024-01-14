@@ -22,11 +22,16 @@
 #include <sys/wait.h>
 #include <pthread.h>
 
+#include <stdlib.h>
+
+int numThreads;
+unsigned long long int target;
+
+int main(void);
+void *findFactors(void*);
 
 int main(void) {
   /* you can ignore the linter warning about this */
-  unsigned long long int target, i, start = 0;
-  int numThreads;
   printf("Give a number to factor.\n");
   scanf("%llu", &target);
 
@@ -36,16 +41,34 @@ int main(void) {
     printf("Bad number of threads!\n");
     return 0;
   }
-
-  for (i = 2; i <= target/2; i = i + 1) {
+  pthread_t threads[numThreads];
+  int *arg;
+  for(int j = 0; j < numThreads; j++){
+    arg = malloc(sizeof(int));
+    if(arg == NULL){
+      perror("Malloc error");
+      exit(1);
+    }
+    *arg = j;
+    pthread_create(&threads[j], NULL, findFactors, arg);    
+  }
+  for(int j = 0; j < numThreads; j++){
+    pthread_join(threads[j], NULL);
+  }
+}
+  
+void *findFactors(void *arg) {
+  int threadNum = *(int*)arg + 1;
+  for (unsigned long long int i = threadNum + 1; i <= target/2; i += numThreads) {
     /* You'll want to keep this testing line in.  Otherwise it goes so
        fast it can be hard to detect your code is running in
        parallel. Also test with a large number (i.e. > 3000) */
-    printf("testing %llu\n", i);
+    printf("thread %d testing %llu\n", threadNum, i);
     if (target % i == 0) {
       printf("%llu is a factor\n", i);
     }
   }
-  return 0;
+  pthread_exit(NULL);
 }
+
 

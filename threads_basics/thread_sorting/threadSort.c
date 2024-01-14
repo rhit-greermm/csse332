@@ -75,7 +75,7 @@ void MergeSort(int array[], int inputLength) {
     MergeSort(array, mid);
     MergeSort(array + mid, inputLength - mid);
     // merge's last input is an inclusive index
-    printf("calling merge 0->%d, 1->%d\n mid %d\n",array[0], array[1], mid); 
+    //printf("calling merge 0->%d, 1->%d\n mid %d\n",array[0], array[1], mid); 
     Merge(array, 0, mid, inputLength - 1);
   }
 }
@@ -84,13 +84,38 @@ void MergeSort(int array[], int inputLength) {
 
 // here's a global I used you might find useful
 char* descriptions[] = {"brute force","bubble","merge"};
+typedef void (*sorter_t)(int[], int);
+sorter_t sorters[3] = {&BruteForceSort, &BubbleSort, &MergeSort};
+int vals_per_thread;
+int *data_array;
+pthread_mutex_t lock;
 
 // I wrote a function called thread dispatch which parses the thread
 // parameters and calls the correct sorting function
 //
 // you can do it a different way but I think this is easiest
 void* thread_dispatch(void* data) {
+  int threadNum = *(int*)data;
+  int start = threadNum * vals_per_thread;
+  char thread_task[55];
+  sprintf(thread_task, "Sorting indices %d-%d with %s", start, start + vals_per_thread, descriptions[threadNum % 3]);
+  printf("%s\n", thread_task);
+  suseconds_t *time_taken = malloc(sizeof(suseconds_t));
+  if(time_taken == NULL){
+    printf("Malloc error at thread %d\n", threadNum);
+    exit(1);
+  }
 
+  struct timeval startt, stopt;
+  pthread_mutex_lock(&lock);
+  gettimeofday(&startt, NULL);
+  (sorters[threadNum % 3])(&data_array[start], vals_per_thread);
+  gettimeofday(&stopt, NULL);
+  pthread_mutex_unlock(&lock);
+  *time_taken = (stopt.tv_usec < startt.tv_usec ? 1000000ul : 0ul) + stopt.tv_usec - startt.tv_usec;
+
+  printf("%s done in %lu usecs\n", thread_task, *time_taken);
+  pthread_exit((void*)time_taken);
 }
 
 int main(int argc, char** argv) {
@@ -99,7 +124,6 @@ int main(int argc, char** argv) {
     printf("not enough arguments!\n");
     exit(1);
   }
-
   // I'm reading the value n (number of threads) for you off the
   // command line
   int n = atoi(argv[1]);
@@ -110,16 +134,16 @@ int main(int argc, char** argv) {
 
   // I'm reading the number of values you want per thread
   // off the command line
-  int vals_per_thread = atoi(argv[2]);
+  vals_per_thread = atoi(argv[2]);
   if(vals_per_thread <= 0 || vals_per_thread > MAX_VALS_PER_THREAD) {
     printf("bad vals_per_thread value %d\n", vals_per_thread);
     exit(1);
   }
 
   int total_nums = n * vals_per_thread;
-  int* data_array = malloc(sizeof(int) * total_nums);
+  data_array = malloc(sizeof(int) * total_nums);
   if(data_array == NULL) {
-    perror("malloc failure");
+    perror("malloc failure\n");
     exit(1);
   }
 
@@ -133,20 +157,52 @@ int main(int argc, char** argv) {
   }
 
   // create your threads here
+  pthread_t threads[n];
+  int *arg;
+  for(int i = 0; i < n; i++){
+    arg = malloc(sizeof(int));
+    if(arg == NULL){
+      perror("Malloc failure\n");
+      exit(1);
+    }
+    *arg = i;    
+    pthread_create(&threads[i], NULL, thread_dispatch, arg);
+  }
 
+  unsigned long max_times[3] = {0, 0, 0}, min_times[3] = {0, 0, 0};
+  int type;
+  double avg_times[3] = {0, 0, 0};
+  suseconds_t *result = malloc(sizeof(suseconds_t));
+
+  for(int i = 0; i < n; i++){
+    type = i % 3;
+    pthread_join(threads[i], (void**)&result);
+    if(i < 3 || min_times[type] > *result){
+      min_times[type] = (int)*result;
+    }
+    if(max_times[type] < *result){
+      max_times[type] = (int)*result;
+    }
+    avg_times[type] += (((double)*result)*3.0f/((double)n));
+  }
+  pthread_mutex_destroy(&lock);
+  free(result);
   // wait for them to finish
-
+  printf("brute force avg %f min %lu max %lu\n", avg_times[0], min_times[0], max_times[0]);
+  printf("bubble avg %f min %lu max %lu\n", avg_times[1], min_times[1], max_times[1]); 
+  printf("merge avg %f min %lu max %lu\n", avg_times[2], min_times[2], max_times[2]);
+  
   // print out the algorithm summary statistics
-
+  
   // print out the result array so you can see the sorting is working
   // you might want to comment this out if you're testing with large data sets
-  printf("Result array:\n");
-  for(int i = 0; i < n; i++) {
-    for(int j = 0; j < vals_per_thread; j++) {
-      printf("%d ", data_array[i*vals_per_thread + j]);
-    }
-    printf("\n");
-  }
+  // printf("Result array:\n");
+  // for(int i = 0; i < n; i++) {
+  // for(int j = 0; j < vals_per_thread; j++) {
+  //   printf("%d ", data_array[i*vals_per_thread + j]);
+  //  }
+  //  printf("\n");
+  //  }
 
   free(data_array); // we should free what we malloc
 }
