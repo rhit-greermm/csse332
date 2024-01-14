@@ -6,12 +6,15 @@
 
 int max;
 volatile int counter = 0; // shared global variable
+pthread_mutex_t lock;
 
 void *mythread(void *arg) {
 	char *letter = arg;
 	int i; // stack (private per thread)
 	for (i = 0; i < max; i++) {
+    pthread_mutex_lock(&lock);
 		counter = counter + 1; // shared: only one
+    pthread_mutex_unlock(&lock);
 	}
 	printf("%s: done\n", letter);
 	return NULL;
@@ -25,6 +28,8 @@ int main(int argc, char *argv[]) {
 	max = atoi(argv[1]);
 
 	pthread_t p1, p2;
+  pthread_mutex_init(&lock, NULL);
+
 	printf("main: begin [counter = %d]\n", counter);
 	pthread_create(&p1, NULL, mythread, "A");
 	pthread_create(&p2, NULL, mythread, "B");
@@ -35,3 +40,5 @@ int main(int argc, char *argv[]) {
 	       counter, max*2);
 	return 0;
 }
+
+

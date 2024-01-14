@@ -10,20 +10,21 @@ struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
+extern pte_t *walk(pagetable_t pagetable, uint64 va, int alloc);
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
 extern int devintr();
 
-void
+  void
 trapinit(void)
 {
   initlock(&tickslock, "time");
 }
 
 // set up to take exceptions and traps while in the kernel.
-void
+  void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
@@ -33,7 +34,7 @@ trapinithart(void)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
-void
+  void
 usertrap(void)
 {
   int which_dev = 0;
@@ -46,10 +47,10 @@ usertrap(void)
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  
+
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
+
   if(r_scause() == 8){
     // system call
 
@@ -67,6 +68,28 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 15) {
+    pagetable_t pt = p->pagetable;
+    uint64 va = r_stval();
+    uint64 va_aligned = va - (va % PGSIZE);
+    pte_t *pte = walk(pt, va, 0);
+
+    if(pte && (*pte & PTE_RSW)) {
+      *pte |= PTE_W;
+      *pte &= ~PTE_RSW;
+      uint flags = PTE_FLAGS(*pte);
+      char *mem = kalloc();
+      memmove(mem, (char*) PTE2PA(*pte), PGSIZE);
+      uvmunmap(pt, va_aligned, (uint64) 1, 1);
+
+      if(mappages(pt, va_aligned, PGSIZE, (uint64) mem, flags) != 0) {
+        kfree(mem);
+        p->killed = 1;
+      }
+    } else {
+      printf("Segmentation fault from process %d at address %p\n", p->pid, va);
+      p->killed = 1;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -86,7 +109,7 @@ usertrap(void)
 //
 // return to user space
 //
-void
+  void
 usertrapret(void)
 {
   struct proc *p = myproc();
@@ -109,7 +132,7 @@ usertrapret(void)
 
   // set up the registers that trampoline.S's sret will use
   // to get to user space.
-  
+
   // set S Previous Privilege mode to User.
   unsigned long x = r_sstatus();
   x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
@@ -131,14 +154,14 @@ usertrapret(void)
 
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
-void 
+  void 
 kerneltrap()
 {
   int which_dev = 0;
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
-  
+
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
   if(intr_get() != 0)
@@ -160,7 +183,7 @@ kerneltrap()
   w_sstatus(sstatus);
 }
 
-void
+  void
 clockintr()
 {
   acquire(&tickslock);
@@ -174,13 +197,13 @@ clockintr()
 // returns 2 if timer interrupt,
 // 1 if other device,
 // 0 if not recognized.
-int
+  int
 devintr()
 {
   uint64 scause = r_scause();
 
   if((scause & 0x8000000000000000L) &&
-     (scause & 0xff) == 9){
+      (scause & 0xff) == 9){
     // this is a supervisor external interrupt, via PLIC.
 
     // irq indicates which device interrupted.
@@ -208,7 +231,7 @@ devintr()
     if(cpuid() == 0){
       clockintr();
     }
-    
+
     // acknowledge the software interrupt by clearing
     // the SSIP bit in sip.
     w_sip(r_sip() & ~2);

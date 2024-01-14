@@ -27,6 +27,13 @@ static void output_time_difference(char* name, struct timeval* start,
 
 void *run_fn(void *arg) {
   // TODO: Add your thread code here...
+  int start = (int) arg;
+  int subsum;
+  for(int i = start; i < start + array_size/2; i++){
+    subsum += array[i];
+  }
+  int *result = malloc(sizeof(int));
+  pthread_exit((void*)result);
   return NULL;
 }
 
@@ -63,12 +70,27 @@ int main(int argc, char **argv) {
   // =====
   //  Now do the sum using two threads.
   //
+  pthread_t p1, p2;
+  int *subsum1, *subsum2;
+  subsum1 = malloc(sizeof(int));
+  subsum2 = malloc(sizeof(int));
+
+
+  gettimeofday(&start, NULL);
+
+  pthread_create(&p1, NULL, run_fn, (int*) 0);
+  pthread_create(&p2, NULL, run_fn, (int*) 512);
 
   // TODO: Add any initialization code here.
 
-  gettimeofday(&start, NULL);
   // TODO: Add your pthread creation and joining code here bet the first call
   // to gettimeofday and the second call to gettimeofday.
+
+  pthread_join(p1,  (void**)&subsum1);
+  pthread_join(p2, (void**)&subsum2);
+  sum = *subsum1 + *subsum2;
+  free(subsum1);
+  free(subsum2);
 
   gettimeofday(&end, NULL);
 
